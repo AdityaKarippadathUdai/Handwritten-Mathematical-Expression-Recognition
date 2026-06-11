@@ -42,24 +42,26 @@ def _stub(dotted_name: str, **attrs) -> types.ModuleType:
     return mod
 
 
+import importlib.util
+
 # ── torch ─────────────────────────────────────────────────────────────────────
-if "torch" not in sys.modules:
+if importlib.util.find_spec("torch") is None:
     _cuda = MagicMock()
     _cuda.is_available = MagicMock(return_value=False)
     _stub("torch", cuda=_cuda)
 
 # ── ultralytics ───────────────────────────────────────────────────────────────
-if "ultralytics" not in sys.modules:
+if importlib.util.find_spec("ultralytics") is None:
     _stub("ultralytics", YOLO=MagicMock())
 
 # ── pydantic / pydantic_settings (used by app.core.config) ───────────────────
-if "pydantic" not in sys.modules:
+if importlib.util.find_spec("pydantic") is None:
     _pydantic = _stub("pydantic")
     # Provide the symbols that app.core.config imports
     _pydantic.BeforeValidator = MagicMock()
     _pydantic.Field           = MagicMock()
 
-if "pydantic_settings" not in sys.modules:
+if importlib.util.find_spec("pydantic_settings") is None:
     _ps = _stub("pydantic_settings")
     # BaseSettings must be sub-classable, so give it a real class
     class _BaseSettings:
@@ -71,7 +73,7 @@ if "pydantic_settings" not in sys.modules:
     _ps.BaseSettings       = _BaseSettings
     _ps.SettingsConfigDict = _SettingsConfigDict
 
-if "typing_extensions" not in sys.modules:
+if importlib.util.find_spec("typing_extensions") is None:
     _te = _stub("typing_extensions")
     _te.Annotated = MagicMock()
 

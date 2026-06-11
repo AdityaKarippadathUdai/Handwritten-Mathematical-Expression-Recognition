@@ -36,22 +36,30 @@ def _stub(dotted_name: str, **attrs) -> types.ModuleType:
 
 
 # ── torch ─────────────────────────────────────────────────────────────────────
-if "torch" not in sys.modules:
+try:
+    import torch
+except ImportError:
     _cuda = MagicMock()
     _cuda.is_available = MagicMock(return_value=False)
     _stub("torch", cuda=_cuda)
 
 # ── ultralytics ───────────────────────────────────────────────────────────────
-if "ultralytics" not in sys.modules:
+try:
+    import ultralytics
+except ImportError:
     _stub("ultralytics", YOLO=MagicMock())
 
 # ── pydantic + pydantic_settings (pulled in by app.core.config) ──────────────
-if "pydantic" not in sys.modules:
+try:
+    import pydantic
+except ImportError:
     _pyd = _stub("pydantic")
     _pyd.BeforeValidator = MagicMock()
     _pyd.Field           = MagicMock()
 
-if "pydantic_settings" not in sys.modules:
+try:
+    import pydantic_settings
+except ImportError:
     class _BaseSettings:
         model_config = {}
         def __init__(self, **kw):
@@ -63,7 +71,9 @@ if "pydantic_settings" not in sys.modules:
     _ps.BaseSettings       = _BaseSettings
     _ps.SettingsConfigDict = _SettingsConfigDict
 
-if "typing_extensions" not in sys.modules:
+try:
+    import typing_extensions
+except ImportError:
     _te = _stub("typing_extensions")
     _te.Annotated = MagicMock()
 

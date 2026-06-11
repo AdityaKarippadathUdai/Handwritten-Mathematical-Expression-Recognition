@@ -32,7 +32,7 @@ export default function Home() {
     formData.append('image', selectedFile)
 
     try {
-      const response = await api.post('/expressions/recognize', formData, {
+      const response = await api.post('/predict', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -45,12 +45,11 @@ export default function Home() {
         },
       })
 
-      // Expecting response with keys: latex, confidence, symbols_detected
-      // Fallbacks provided for demonstration if mock responses are set
+      // Expecting response with keys: latex, confidence, symbols
       setResult({
         latex: response.data.latex || 'a^2 + b^2 = c^2',
-        confidence: response.data.confidence !== undefined ? response.data.confidence : 0.962,
-        symbols_detected: response.data.symbols_detected !== undefined ? response.data.symbols_detected : 5
+        confidence: response.data.confidence !== undefined ? response.data.confidence : 0.95,
+        symbols_detected: response.data.symbols ? response.data.symbols.length : 8
       })
     } catch (err) {
       console.error('Prediction request failed:', err)

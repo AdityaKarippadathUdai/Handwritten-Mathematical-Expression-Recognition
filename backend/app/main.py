@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 from app.api import deps
-from app.api.v1.endpoints import auth, expression, model
+from app.api.v1.endpoints import auth, expression, model, predict
 from app.core.config import settings
 
 app = FastAPI(
@@ -43,6 +43,8 @@ def health_check(db: Session = Depends(deps.get_db)) -> Dict[str, Any]:
     return health_status
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
+app.include_router(predict.router, prefix=settings.API_V1_STR, tags=["prediction"])
 app.include_router(expression.router, prefix=f"{settings.API_V1_STR}/expressions", tags=["expressions"])
 app.include_router(model.router, prefix=f"{settings.API_V1_STR}/model", tags=["model"])
+
 

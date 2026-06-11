@@ -1,3 +1,4 @@
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 from app.api import deps
@@ -9,8 +10,9 @@ router = APIRouter()
 async def recognize_expression(
     image: UploadFile = File(...),
     db: Session = Depends(deps.get_db)
-):
+) -> Dict[str, Any]:
     # Call service to preprocess, detect via YOLO and parse expressions
     service = ExpressionService(db)
     result = await service.process_handwritten_image(image)
     return result
+

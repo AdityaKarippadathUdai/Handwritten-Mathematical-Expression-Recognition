@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import ImageUploader from '../components/Upload/ImageUploader.jsx'
+import PredictionResult from '../components/Results/PredictionResult.jsx'
 import api from '../services/api'
-import { Play, Copy, Check, Brain, Percent, Sigma, AlertCircle, FileCode, Sparkles } from 'lucide-react'
+import { Play, AlertCircle } from 'lucide-react'
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState(null)
@@ -9,7 +10,6 @@ export default function Home() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
 
   // Triggered when file changes in the uploader component
   const handleImageSelected = (file) => {
@@ -45,11 +45,11 @@ export default function Home() {
         },
       })
 
-      // Expecting response with keys: latex, confidence, symbols
       setResult({
-        latex: response.data.latex || 'a^2 + b^2 = c^2',
+        latex: response.data.latex || '',
         confidence: response.data.confidence !== undefined ? response.data.confidence : 0.95,
-        symbols_detected: response.data.symbols ? response.data.symbols.length : 8
+        symbols_detected: response.data.symbols_detected || 0,
+        processing_time_ms: response.data.processing_time_ms || 0,
       })
     } catch (err) {
       console.error('Prediction request failed:', err)
@@ -57,14 +57,6 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Copy LaTeX output to clipboard
-  const handleCopy = () => {
-    if (!result) return
-    navigator.clipboard.writeText(result.latex)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -105,82 +97,14 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Side: Prediction Metrics & LaTeX Result */}
+        {/* Right Side: Prediction Result */}
         <div className="lg:col-span-5">
-          <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-6 shadow-xl backdrop-blur-md min-h-[300px] flex flex-col">
-            <h2 className="text-sm font-semibold text-neutral-400 tracking-wider uppercase mb-4 font-mono">Prediction Metrics</h2>
-
-            {result ? (
-              <div className="flex-1 flex flex-col justify-between space-y-6 animate-in fade-in duration-200">
-                {/* LaTeX Code Box */}
-                <div className="space-y-2">
-                  <span className="text-xs text-neutral-400 block font-medium">Recognized LaTeX Expression</span>
-                  <div className="relative group bg-neutral-950 p-4 rounded-xl border border-neutral-850 flex items-center justify-between">
-                    <code className="text-sm text-violet-300 font-mono font-bold select-all overflow-x-auto whitespace-pre pr-6">
-                      {result.latex}
-                    </code>
-                    <button
-                      onClick={handleCopy}
-                      className="absolute right-3 p-1.5 bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                      title="Copy LaTeX"
-                    >
-                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* YOLO Model confidence */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-neutral-400 font-medium">
-                      <Percent className="w-4 h-4 text-emerald-400" />
-                      <span>Model Confidence</span>
-                    </div>
-                    <span className="font-bold text-emerald-400 text-sm">{(result.confidence * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="w-full bg-neutral-950 rounded-full h-2 overflow-hidden border border-neutral-850">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        result.confidence >= 0.85 ? 'bg-emerald-500' : result.confidence >= 0.60 ? 'bg-amber-500' : 'bg-red-500'
-                      }`}
-                      style={{ width: `${result.confidence * 100}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Detected symbols counter */}
-                <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-850 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-violet-600/10 rounded-lg text-violet-400 border border-violet-500/10">
-                      <Sigma className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">Detected Symbols</span>
-                      <span className="text-sm font-bold text-neutral-200 mt-0.5 block">{result.symbols_detected} items</span>
-                    </div>
-                  </div>
-                  <Brain className="w-5 h-5 text-violet-400" />
-                </div>
-
-                {/* Direct info banner */}
-                <div className="p-4 rounded-xl bg-violet-600/5 border border-violet-500/10 text-xs text-neutral-400 leading-relaxed flex gap-2">
-                  <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
-                  <span>
-                    YOLOv11 segmented individual glyph elements, allowing our spatial layouts optimizer to compile mathematical relationships.
-                  </span>
-                </div>
-              </div>
-            ) : (
-              /* Awaiting State */
-              <div className="flex-1 flex flex-col items-center justify-center text-center py-12 text-neutral-500">
-                <Brain className="w-10 h-10 text-neutral-700 mb-3" />
-                <h3 className="text-sm font-bold text-neutral-400 mb-1">Awaiting Prediction</h3>
-                <p className="text-xs text-neutral-600 max-w-[240px] leading-normal">
-                  Upload an equation file on the left and click Predict to view recognized LaTeX equations and YOLO accuracy ratings.
-                </p>
-              </div>
-            )}
-          </div>
+          <PredictionResult
+            result={result}
+            imageFile={selectedFile}
+            onRerun={selectedFile ? handlePredict : undefined}
+            isRerunning={loading}
+          />
         </div>
       </div>
     </div>

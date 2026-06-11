@@ -1,7 +1,7 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.models import EquationHistory
+from app.models.history import EquationHistory
 from app.schemas.history import EquationHistoryCreate
 
 

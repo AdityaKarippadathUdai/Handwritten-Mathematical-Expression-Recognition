@@ -2,4 +2,6 @@
 # and auto-generate migrations correctly.
 
 from app.core.database import Base  # noqa
-from app.db.models import EquationHistory, Expression, User  # noqa
+from app.models.expression import Expression  # noqa
+from app.models.history import EquationHistory  # noqa
+from app.models.user import User  # noqa

@@ -256,7 +256,7 @@ def parse_parentheses_and_matrices(nodes: List[ASTNode]) -> List[ASTNode]:
                 max(open_node.bbox[2], close_node.bbox[2]),
                 max(open_node.bbox[3], close_node.bbox[3])
             ]
-            matrix_node = ASTNode(type='matrix', rows=matrix_rows, bbox=union_bbox)
+            matrix_node = ASTNode(type='matrix', value=open_node.value, rows=matrix_rows, bbox=union_bbox)
             nodes = nodes[:best_open_idx] + [matrix_node] + nodes[best_close_idx+1:]
         else:
             union_bbox = [
@@ -266,7 +266,7 @@ def parse_parentheses_and_matrices(nodes: List[ASTNode]) -> List[ASTNode]:
                 max(open_node.bbox[3], close_node.bbox[3])
             ]
             inner_ast = parse_expression_nodes(inner_nodes)
-            group_node = ASTNode(type='group', expression=inner_ast, bbox=union_bbox)
+            group_node = ASTNode(type='group', value=open_node.value, expression=inner_ast, bbox=union_bbox)
             nodes = nodes[:best_open_idx] + [group_node] + nodes[best_close_idx+1:]
             
     return nodes

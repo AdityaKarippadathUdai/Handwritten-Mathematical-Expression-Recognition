@@ -21,9 +21,8 @@ config.set_main_option("sqlalchemy.url", db_url)
 
 # Add your model's MetaData object here
 # for 'autogenerate' support
-# from app.core.database import Base
-# target_metadata = Base.metadata
-target_metadata = None
+from app.db.base import Base
+target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")

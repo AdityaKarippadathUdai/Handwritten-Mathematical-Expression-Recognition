@@ -1,6 +1,6 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
-import { SquarePen, History, Sigma } from 'lucide-react'
+import { SquarePen, History, Sigma, UploadCloud } from 'lucide-react'
 
 export default function Sidebar() {
   return (
@@ -15,6 +15,20 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 p-4 space-y-1.5">
+        <NavLink
+          to="/predict"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              isActive
+                ? 'bg-neutral-800/80 text-violet-400 border-l-4 border-violet-500 shadow-sm'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+            }`
+          }
+        >
+          <UploadCloud className="w-5 h-5" />
+          <span>Formula Upload</span>
+        </NavLink>
+
         <NavLink
           to="/dashboard"
           className={({ isActive }) =>

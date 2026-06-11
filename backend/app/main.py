@@ -1,10 +1,12 @@
 from typing import Any, Dict
+from pathlib import Path
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 from app.api import deps
-from app.api.v1.endpoints import auth, expression, model, predict
+from app.api.v1.endpoints import auth, expression, history, model, predict
 from app.core.config import settings
 
 app = FastAPI(
@@ -20,6 +22,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 @app.get("/", tags=["root"])
 def read_root() -> Dict[str, str]:
@@ -44,6 +50,7 @@ def health_check(db: Session = Depends(deps.get_db)) -> Dict[str, Any]:
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
 app.include_router(predict.router, prefix=settings.API_V1_STR, tags=["prediction"])
+app.include_router(history.router, prefix=f"{settings.API_V1_STR}/history", tags=["history"])
 app.include_router(expression.router, prefix=f"{settings.API_V1_STR}/expressions", tags=["expressions"])
 app.include_router(model.router, prefix=f"{settings.API_V1_STR}/model", tags=["model"])
 

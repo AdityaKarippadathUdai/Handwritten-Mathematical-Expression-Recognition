@@ -1,46 +1,107 @@
 """
 app/tests/conftest.py
 
-Provides shared test fixtures. The full-stack fixtures (client, db) are only
-constructed when FastAPI, SQLAlchemy, and the app modules are importable.
-Unit-level tests (symbol_detection, image_preprocessing) do NOT require them.
+Bootstraps sys.path and stubs heavy packages before any test module is imported.
+This runs with whatever Python interpreter pytest uses.
 """
+import sys
+import os
+import types
+from unittest.mock import MagicMock
 import pytest
 
+# ── Ensure backend/ is on sys.path so `from app.services import ...` works ───
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
+
+def _stub(dotted_name: str, **attrs) -> types.ModuleType:
+    """Register a minimal stub for dotted_name without overwriting real packages."""
+    if dotted_name in sys.modules:
+        return sys.modules[dotted_name]
+    mod = types.ModuleType(dotted_name)
+    mod.__spec__ = None                          # type: ignore[assignment]
+    mod.__getattr__ = lambda n: MagicMock()      # type: ignore[assignment]
+    for k, v in attrs.items():
+        setattr(mod, k, v)
+    sys.modules[dotted_name] = mod
+    # Attach to parent
+    parts = dotted_name.split(".")
+    if len(parts) > 1:
+        parent = sys.modules.get(".".join(parts[:-1]))
+        if parent is not None:
+            setattr(parent, parts[-1], mod)
+    return mod
+
+
+# ── torch ─────────────────────────────────────────────────────────────────────
+if "torch" not in sys.modules:
+    _cuda = MagicMock()
+    _cuda.is_available = MagicMock(return_value=False)
+    _stub("torch", cuda=_cuda)
+
+# ── ultralytics ───────────────────────────────────────────────────────────────
+if "ultralytics" not in sys.modules:
+    _stub("ultralytics", YOLO=MagicMock())
+
+# ── pydantic + pydantic_settings (pulled in by app.core.config) ──────────────
+if "pydantic" not in sys.modules:
+    _pyd = _stub("pydantic")
+    _pyd.BeforeValidator = MagicMock()
+    _pyd.Field           = MagicMock()
+
+if "pydantic_settings" not in sys.modules:
+    class _BaseSettings:
+        model_config = {}
+        def __init__(self, **kw):
+            for k, v in kw.items():
+                setattr(self, k, v)
+    class _SettingsConfigDict(dict):
+        pass
+    _ps = _stub("pydantic_settings")
+    _ps.BaseSettings       = _BaseSettings
+    _ps.SettingsConfigDict = _SettingsConfigDict
+
+if "typing_extensions" not in sys.modules:
+    _te = _stub("typing_extensions")
+    _te.Annotated = MagicMock()
+
+
+# ── Full-stack fixtures (FastAPI/SQLAlchemy) — optional ───────────────────────
 try:
     from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    from app.main import app
+    from app.main import app as _app
     from app.core.database import Base
     from app.api import deps
-    _FULL_STACK_AVAILABLE = True
+    _FULL_STACK = True
 except Exception:
-    _FULL_STACK_AVAILABLE = False
+    _FULL_STACK = False
 
-
-if _FULL_STACK_AVAILABLE:
-    SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+if _FULL_STACK:
+    _DB_URL = "sqlite:///./test.db"
+    _engine = create_engine(_DB_URL, connect_args={"check_same_thread": False})
+    _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
     @pytest.fixture(scope="module")
     def db():
-        Base.metadata.create_all(bind=engine)
-        db_session = TestingSessionLocal()
+        Base.metadata.create_all(bind=_engine)
+        session = _SessionLocal()
         try:
-            yield db_session
+            yield session
         finally:
-            db_session.close()
-            Base.metadata.drop_all(bind=engine)
+            session.close()
+            Base.metadata.drop_all(bind=_engine)
 
     @pytest.fixture(scope="module")
     def client(db):
-        def override_get_db():
+        def _override():
             try:
                 yield db
             finally:
                 pass
-        app.dependency_overrides[deps.get_db] = override_get_db
-        with TestClient(app) as c:
+        _app.dependency_overrides[deps.get_db] = _override
+        with TestClient(_app) as c:
             yield c

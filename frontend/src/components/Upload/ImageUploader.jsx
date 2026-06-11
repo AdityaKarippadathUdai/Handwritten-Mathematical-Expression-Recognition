@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { UploadCloud, X, Image as ImageIcon, AlertCircle, RefreshCw } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { AlertCircle, RefreshCw, UploadCloud, X } from 'lucide-react'
 
 export default function ImageUploader({ onImageSelected, uploadProgress = null }) {
   const [file, setFile] = useState(null)
@@ -9,7 +9,6 @@ export default function ImageUploader({ onImageSelected, uploadProgress = null }
   const [isDragActive, setIsDragActive] = useState(false)
   const fileInputRef = useRef(null)
 
-  // Clean up object URLs to prevent memory leaks
   useEffect(() => {
     return () => {
       if (previewUrl) {
@@ -18,46 +17,43 @@ export default function ImageUploader({ onImageSelected, uploadProgress = null }
     }
   }, [previewUrl])
 
-  // Helper to format file sizes
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes'
     const k = 1024
     const sizes = ['Bytes', 'KB', 'MB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
   }
 
-  // Validate and process the file
   const processFile = (selectedFile) => {
     setError('')
     setDimensions(null)
 
     if (!selectedFile) return
 
-    // Validate type (jpg, jpeg, png, webp)
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
     if (!allowedTypes.includes(selectedFile.type)) {
       setError('Unsupported file type. Please upload a JPG, PNG, or WEBP image.')
       return
     }
 
-    // Validate size (max 10 MB = 10 * 1024 * 1024 bytes)
     const maxSize = 10 * 1024 * 1024
     if (selectedFile.size > maxSize) {
       setError('File is too large. Maximum size is 10 MB.')
       return
     }
 
-    // Generate preview URL
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl)
+    }
+
     const objectUrl = URL.createObjectURL(selectedFile)
     setPreviewUrl(objectUrl)
     setFile(selectedFile)
 
-    // Calculate dimensions
     const img = new Image()
     img.onload = () => {
       setDimensions({ width: img.width, height: img.height })
-      // Callback to parent container
       onImageSelected(selectedFile)
     }
     img.onerror = () => {
@@ -66,33 +62,30 @@ export default function ImageUploader({ onImageSelected, uploadProgress = null }
     img.src = objectUrl
   }
 
-  // File selection handlers
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0])
+  const handleFileChange = (event) => {
+    if (event.target.files && event.target.files.length > 0) {
+      processFile(event.target.files[0])
     }
   }
 
-  // Drag and drop event handlers
-  const handleDragOver = (e) => {
-    e.preventDefault()
+  const handleDragOver = (event) => {
+    event.preventDefault()
     setIsDragActive(true)
   }
 
-  const handleDragLeave = (e) => {
-    e.preventDefault()
+  const handleDragLeave = (event) => {
+    event.preventDefault()
     setIsDragActive(false)
   }
 
-  const handleDrop = (e) => {
-    e.preventDefault()
+  const handleDrop = (event) => {
+    event.preventDefault()
     setIsDragActive(false)
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0])
+    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+      processFile(event.dataTransfer.files[0])
     }
   }
 
-  // Remove selected image
   const handleRemove = () => {
     setFile(null)
     setDimensions(null)
@@ -107,19 +100,18 @@ export default function ImageUploader({ onImageSelected, uploadProgress = null }
     onImageSelected(null)
   }
 
-  return (
-    <div className="w-full">
-      {/* Upload Zone */}
-      {!file ? (
+  if (!file) {
+    return (
+      <div className="w-full">
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`relative flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all min-h-[260px] ${
+          className={`relative flex min-h-[260px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-all ${
             isDragActive
-              ? 'border-violet-500 bg-violet-600/10 shadow-lg shadow-violet-500/5'
-              : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/40 hover:bg-neutral-900/30'
+              ? 'border-sky-400 bg-sky-50 shadow-lg shadow-sky-500/10 dark:bg-sky-400/10'
+              : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white dark:border-white/10 dark:bg-neutral-950/50 dark:hover:border-white/20 dark:hover:bg-neutral-950'
           }`}
         >
           <input
@@ -130,104 +122,97 @@ export default function ImageUploader({ onImageSelected, uploadProgress = null }
             className="hidden"
           />
 
-          <div className="p-4 bg-neutral-900/80 border border-neutral-800 rounded-2xl text-violet-400 mb-4 shadow-sm">
-            <UploadCloud className="w-8 h-8" />
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4 text-sky-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-sky-300">
+            <UploadCloud className="h-8 w-8" />
           </div>
 
-          <h3 className="text-sm font-bold text-white mb-1">
-            Drag and drop your image here, or <span className="text-violet-400 hover:text-violet-300">browse</span>
+          <h3 className="mb-1 text-sm font-bold text-slate-950 dark:text-white">
+            Drag and drop your image here, or <span className="text-sky-600 dark:text-sky-300">browse</span>
           </h3>
-          <p className="text-xs text-neutral-400 max-w-[280px]">
+          <p className="max-w-[280px] text-xs text-slate-500 dark:text-neutral-400">
             Supports JPG, JPEG, PNG, and WEBP. Maximum file size is 10 MB.
           </p>
 
           {error && (
-            <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2 p-3 bg-red-950/40 border border-red-500/20 rounded-xl text-red-400 text-xs text-left animate-in fade-in duration-200">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-left text-xs text-rose-700 dark:border-rose-500/20 dark:bg-rose-950/40 dark:text-rose-300">
+              <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
         </div>
-      ) : (
-        /* Preview / Detail Card */
-        <div className="bg-neutral-950/40 border border-neutral-800 rounded-2xl p-5 shadow-xl animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex flex-col md:flex-row gap-5 items-start">
-            {/* Image Preview Window */}
-            <div className="relative group rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 w-full md:w-44 h-32 flex items-center justify-center shrink-0">
-              <img
-                src={previewUrl}
-                alt="Upload preview"
-                className="w-full h-full object-contain"
-              />
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 shadow-sm dark:border-white/10 dark:bg-neutral-950/50">
+        <div className="flex flex-col items-start gap-5 md:flex-row">
+          <div className="group relative flex h-32 w-full shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-neutral-950 md:w-44">
+            <img src={previewUrl} alt="Upload preview" className="h-full w-full object-contain" />
+            <button
+              onClick={handleRemove}
+              className="absolute right-2 top-2 cursor-pointer rounded-lg bg-slate-950/80 p-1.5 text-white shadow-md transition-colors hover:bg-rose-600 dark:bg-neutral-950/80"
+              title="Remove image"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="min-w-0 flex-1 w-full">
+            <div className="flex items-start justify-between">
+              <div className="truncate pr-4">
+                <h4 className="truncate text-sm font-bold text-slate-950 dark:text-white" title={file.name}>
+                  {file.name}
+                </h4>
+                <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+                  Image File ({(file.type.split('/')[1] || '').toUpperCase()})
+                </p>
+              </div>
               <button
                 onClick={handleRemove}
-                className="absolute top-2 right-2 p-1.5 bg-neutral-950/80 hover:bg-red-600/90 text-neutral-300 hover:text-white rounded-lg transition-colors cursor-pointer shadow-md"
-                title="Remove image"
+                className="hidden cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 md:flex"
               >
-                <X className="w-4 h-4" />
+                <X className="h-3.5 w-3.5" />
+                <span>Remove</span>
               </button>
             </div>
 
-            {/* Metadata & Progress Details */}
-            <div className="flex-1 min-w-0 w-full">
-              <div className="flex items-start justify-between">
-                <div className="truncate pr-4">
-                  <h4 className="text-sm font-bold text-white truncate" title={file.name}>
-                    {file.name}
-                  </h4>
-                  <p className="text-xs text-neutral-400 mt-1">
-                    Image File ({(file.type.split('/')[1] || '').toUpperCase()})
-                  </p>
-                </div>
-                <button
-                  onClick={handleRemove}
-                  className="hidden md:flex items-center gap-1.5 px-3 py-1.5 border border-neutral-800 hover:bg-neutral-800 rounded-xl text-xs font-semibold text-neutral-300 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Remove</span>
-                </button>
+            <div className="mt-4 grid grid-cols-2 gap-4 border-y border-slate-200 py-3 dark:border-white/10">
+              <div>
+                <span className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-neutral-500">File Size</span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-700 dark:text-neutral-200">
+                  {formatFileSize(file.size)}
+                </span>
               </div>
-
-              {/* Attributes Checklist */}
-              <div className="grid grid-cols-2 gap-4 mt-4 py-3 border-t border-b border-neutral-850">
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">File Size</span>
-                  <span className="text-xs font-semibold text-neutral-200 mt-0.5 block">
-                    {formatFileSize(file.size)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">Dimensions</span>
-                  <span className="text-xs font-semibold text-neutral-200 mt-0.5 block">
-                    {dimensions ? `${dimensions.width} × ${dimensions.height} px` : 'Calculating...'}
-                  </span>
-                </div>
+              <div>
+                <span className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-neutral-500">Dimensions</span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-700 dark:text-neutral-200">
+                  {dimensions ? `${dimensions.width} x ${dimensions.height} px` : 'Calculating...'}
+                </span>
               </div>
-
-              {/* Progress Loading Indicator */}
-              {uploadProgress !== null && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <div className="flex items-center gap-1.5 text-neutral-400">
-                      {uploadProgress < 100 ? (
-                        <RefreshCw className="w-3 h-3 animate-spin text-violet-400" />
-                      ) : null}
-                      <span>{uploadProgress < 100 ? 'Uploading to YOLOv11...' : 'Complete!'}</span>
-                    </div>
-                    <span className="font-mono text-neutral-300 font-semibold">{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-neutral-900 rounded-full h-1.5 overflow-hidden border border-neutral-800">
-                    <div
-                      className="bg-gradient-to-r from-violet-600 to-indigo-500 h-full rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
+
+            {uploadProgress !== null && (
+              <div className="mt-4">
+                <div className="mb-1.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-500 dark:text-neutral-400">
+                    {uploadProgress < 100 ? <RefreshCw className="h-3 w-3 animate-spin text-sky-500" /> : null}
+                    <span>{uploadProgress < 100 ? 'Uploading to recognition engine...' : 'Upload complete'}</span>
+                  </div>
+                  <span className="font-mono font-semibold text-slate-700 dark:text-neutral-300">{uploadProgress}%</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-neutral-900">
+                  <div
+                    className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

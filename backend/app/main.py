@@ -1,3 +1,5 @@
+import logging
+from contextlib import asynccontextmanager
 from typing import Any, Dict
 from pathlib import Path
 from fastapi import FastAPI, Depends
@@ -8,10 +10,28 @@ from sqlalchemy.sql import text
 from app.api import deps
 from app.api.v1.endpoints import auth, expression, history, model, predict
 from app.core.config import settings
+from app.services.pix2tex_service import get_pix2tex_service
+
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("application_startup_begin")
+    get_pix2tex_service().initialize()
+    logger.info("application_startup_complete")
+    yield
+    logger.info("application_shutdown")
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # Set CORS
@@ -36,6 +56,7 @@ def health_check(db: Session = Depends(deps.get_db)) -> Dict[str, Any]:
     health_status: Dict[str, Any] = {
         "status": "healthy",
         "database": "untested",
+        "model": get_pix2tex_service().health_status(),
         "environment": settings.ENVIRONMENT,
     }
     try:
@@ -45,6 +66,9 @@ def health_check(db: Session = Depends(deps.get_db)) -> Dict[str, Any]:
     except Exception as e:
         health_status["status"] = "unhealthy"
         health_status["database"] = f"error: {str(e)}"
+
+    if not health_status["model"]["loaded"]:
+        health_status["status"] = "unhealthy"
     
     return health_status
 

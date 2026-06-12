@@ -1,18 +1,17 @@
-from typing import Any, Dict
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
+
 from app.api import deps
-from app.services.expression_service import ExpressionService
+from app.schemas.prediction import PredictionResult
+from app.services.predict_service import PredictService
 
 router = APIRouter()
 
-@router.post("/recognize")
-async def recognize_expression(
-    image: UploadFile = File(...),
-    db: Session = Depends(deps.get_db)
-) -> Dict[str, Any]:
-    # Call service to preprocess, detect via YOLO and parse expressions
-    service = ExpressionService(db)
-    result = await service.process_handwritten_image(image)
-    return result
 
+@router.post("/recognize", response_model=PredictionResult)
+async def recognize_expression(
+    image: UploadFile = File(..., description="Handwritten mathematical expression image"),
+    db: Session = Depends(deps.get_db),
+) -> PredictionResult:
+    service = PredictService(db=db)
+    return await service.process_prediction(image)

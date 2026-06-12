@@ -41,7 +41,10 @@ export default function PredictionResult({
   const latex = result?.latex || ''
   const confidence = Number(result?.confidence || 0)
   const processingTime = Number(result?.processing_time_ms || 0)
-  const symbolsDetected = Number(result?.symbols_detected || 0)
+  const ocrTime = Number(result?.ocr_time_ms || 0)
+  const preprocessingTime = Number(result?.preprocessing_time_ms || 0)
+  const predictionId = result?.prediction_id || ''
+  const createdAt = result?.created_at ? new Date(result.created_at).toLocaleString() : ''
 
   const renderedEquation = useMemo(() => {
     if (!latex) return ''
@@ -178,15 +181,30 @@ export default function PredictionResult({
             />
             <Metric
               icon={<Clock3 className="h-4 w-4 text-amber-300" />}
-              label="Processing Time"
+              label="Total Time"
               value={`${processingTime} ms`}
             />
             <Metric
               icon={<Sigma className="h-4 w-4 text-sky-300" />}
-              label="Detected Symbols"
-              value={symbolsDetected}
+              label="Pix2Tex OCR"
+              value={`${ocrTime} ms`}
             />
           </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Metric
+              icon={<Clock3 className="h-4 w-4 text-slate-300" />}
+              label="Preprocessing"
+              value={`${preprocessingTime} ms`}
+            />
+            <Metric
+              icon={<FileCode2 className="h-4 w-4 text-slate-300" />}
+              label="Prediction ID"
+              value={predictionId ? predictionId.slice(0, 8) : 'Pending'}
+            />
+          </div>
+          {createdAt && (
+            <p className="text-xs text-slate-500">Created {createdAt}</p>
+          )}
         </div>
       </div>
     </section>

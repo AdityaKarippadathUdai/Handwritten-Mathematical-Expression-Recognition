@@ -16,7 +16,7 @@ async def predict_expression(
 ) -> PredictionResult:
     """
     Upload a handwritten equation image. The endpoint validates format and sizes,
-    saves the image, identifies mathematical symbol components using YOLOv11, 
-    and returns a structured LaTeX mathematical expression.
+    preprocesses it for Pix2Tex, runs LaTeX-OCR inference, saves history, and
+    returns render-ready LaTeX with timing metadata.
     """
     return await service.process_prediction(image)

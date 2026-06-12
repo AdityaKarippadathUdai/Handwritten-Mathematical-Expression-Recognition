@@ -15,20 +15,14 @@ export default function Dashboard() {
     try {
       const formData = new FormData()
       formData.append('image', imageBlob, 'canvas.png')
-      // Simulated upload calling FastAPI recognition backend
-      // Replace with real Axios calls
       const response = await api.post('/expressions/recognize', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       
-      // Using mock values temporarily if model server returns defaults
-      setLatex(response.data.latex || 'a^2 + b^2 = c^2')
-      setConfidence(response.data.confidence || 0.945)
+      setLatex(response.data.latex || '')
+      setConfidence(response.data.confidence || 0)
     } catch (err) {
       console.error(err)
-      // Fallback details for display
-      setLatex('x + y = z')
-      setConfidence(0.887)
     } finally {
       setLoading(false)
     }
@@ -39,7 +33,7 @@ export default function Dashboard() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-white">Equation Recognition Hub</h1>
         <p className="text-sm text-neutral-400 mt-1">
-          Draw mathematical expressions manually, send them to our YOLOv11 detector, and render structured LaTeX syntax.
+          Draw mathematical expressions manually, send them to Pix2Tex OCR, and render structured LaTeX syntax.
         </p>
       </div>
 
@@ -70,7 +64,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-3">
                     <Percent className="w-5 h-5 text-emerald-400" />
                     <div>
-                      <span className="text-xs text-neutral-400 block">YOLOv11 Confidence</span>
+                      <span className="text-xs text-neutral-400 block">OCR Confidence</span>
                       <span className="text-sm text-emerald-400 font-semibold">{(confidence * 100).toFixed(1)}%</span>
                     </div>
                   </div>

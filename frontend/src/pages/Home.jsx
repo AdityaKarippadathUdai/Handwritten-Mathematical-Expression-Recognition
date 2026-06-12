@@ -7,7 +7,7 @@ import { AlertCircle, ArrowRight, BrainCircuit, CheckCircle2, Loader2, Play, Spa
 
 const workflow = [
   ['Upload image', 'JPG, PNG, or WEBP up to 10 MB'],
-  ['Run recognition', 'YOLOv11 detects math symbols'],
+  ['Run OCR', 'Pix2Tex reads the full expression'],
   ['Export LaTeX', 'Copy, download, and revisit later'],
 ]
 
@@ -54,8 +54,13 @@ export default function Home() {
       const nextResult = {
         latex: response.data.latex || '',
         confidence: response.data.confidence !== undefined ? response.data.confidence : 0.95,
-        symbols_detected: response.data.symbols_detected || 0,
         processing_time_ms: response.data.processing_time_ms || 0,
+        preprocessing_time_ms: response.data.preprocessing_time_ms || 0,
+        ocr_time_ms: response.data.ocr_time_ms || 0,
+        confidence_source: response.data.confidence_source || 'unknown',
+        prediction_id: response.data.prediction_id || '',
+        image_path: response.data.image_path || '',
+        created_at: response.data.created_at || '',
       }
       setResult(nextResult)
       showToast({
@@ -86,7 +91,7 @@ export default function Home() {
               Convert handwritten math into publication-ready LaTeX.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 dark:text-neutral-400">
-              Upload an equation image, send it through the recognition pipeline, then review rendered output, confidence, symbols, and export actions in one workspace.
+              Upload an equation image, send it through Pix2Tex OCR, then review rendered output, timing, confidence, and export actions in one workspace.
             </p>
           </div>
 

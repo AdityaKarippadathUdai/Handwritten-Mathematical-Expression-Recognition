@@ -10,6 +10,19 @@ def parse_cors(v: Any) -> List[str]:
         return v
     raise ValueError(v)
 
+
+def parse_bool(v: Any) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        normalized = v.strip().lower()
+        if normalized in {"1", "true", "yes", "on", "debug", "development"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "release", "production"}:
+            return False
+    return bool(v)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -31,7 +44,7 @@ class Settings(BaseSettings):
     YOLO_MODEL_PATH: str = "ml_models/yolo/best.pt"
     
     ENVIRONMENT: str = "production"
-    DEBUG: bool = False
+    DEBUG: Annotated[bool, BeforeValidator(parse_bool)] = False
 
 settings = Settings()
 

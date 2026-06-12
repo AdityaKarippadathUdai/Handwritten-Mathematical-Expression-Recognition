@@ -49,6 +49,18 @@ try:
 except ImportError:
     _stub("ultralytics", YOLO=MagicMock())
 
+_pix2tex = _stub("pix2tex")
+_pix2tex_cli = _stub("pix2tex.cli")
+
+
+class _LatexOCR:
+    def __call__(self, image):
+        return r"x^2 + y"
+
+
+_pix2tex_cli.LatexOCR = _LatexOCR
+_pix2tex.cli = _pix2tex_cli
+
 # ── pydantic + pydantic_settings (pulled in by app.core.config) ──────────────
 try:
     import pydantic

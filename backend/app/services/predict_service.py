@@ -1,112 +1,127 @@
 import inspect
+import logging
 import time
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence
+from typing import Any, Optional, Protocol
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.crud.crud_history import crud_history
-from app.schemas.prediction import PredictionResult
 from app.schemas.history import EquationHistoryCreate
-from app.services.expression_parser import ExpressionParser
+from app.schemas.prediction import PredictionResult
 from app.services.image_preprocessing import ImagePreprocessingService
-from app.services.latex_generator import LatexGenerator
-from app.services.symbol_detection import SymbolDetectionService
+from app.services.pix2tex_service import (
+    Pix2TexInputError,
+    Pix2TexModelError,
+    Pix2TexOCRService,
+    get_pix2tex_service,
+)
+
+logger = logging.getLogger(__name__)
 
 
-class ImagePreprocessor(Protocol):
-    def preprocess(self, image_source: bytes, **kwargs: Any) -> Any:
+class Pix2TexPreprocessor(Protocol):
+    def preprocess_for_pix2tex(self, image_source: bytes, **kwargs: Any) -> Any:
         ...
-
-
-class SymbolDetector(Protocol):
-    def detect(self, image: Any, confidence_threshold: float = 0.25) -> List[Dict[str, Any]]:
-        ...
-
-
-class ExpressionParserProtocol(Protocol):
-    def parse(self, symbols_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        ...
-
-
-class LatexGeneratorProtocol(Protocol):
-    def generate(self, ast: Optional[Dict[str, Any]]) -> str:
-        ...
-
-
-class PredictionPipelineError(RuntimeError):
-    """Raised when OCR pipeline execution fails after request validation."""
 
 
 class PredictService:
     """
-    Coordinates the complete OCR prediction pipeline:
-    upload bytes -> preprocessing -> YOLO detection -> expression parsing -> LaTeX generation.
+    Coordinates the production OCR prediction pipeline:
+    upload bytes -> validation -> Pix2Tex-compatible preprocessing -> Pix2Tex OCR
+    -> history persistence -> API response.
     """
 
     allowed_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+    allowed_content_types = {"image/jpeg", "image/png", "image/webp"}
     max_file_size = 10 * 1024 * 1024
 
     def __init__(
         self,
-        preprocessor: Optional[ImagePreprocessor] = None,
-        detector: Optional[Any] = None,
-        parser: Optional[ExpressionParserProtocol] = None,
-        latex_generator: Optional[LatexGeneratorProtocol] = None,
+        preprocessor: Optional[Pix2TexPreprocessor] = None,
+        ocr_service: Optional[Pix2TexOCRService] = None,
         db: Optional[Session] = None,
-        confidence_threshold: float = 0.25,
         upload_dir: str = "uploads/predictions",
     ) -> None:
         self.preprocessor = preprocessor or ImagePreprocessingService()
-        self.detector = detector or SymbolDetectionService()
-        self.parser = parser or ExpressionParser()
-        self.latex_generator = latex_generator or LatexGenerator()
+        self.ocr_service = ocr_service or get_pix2tex_service()
         self.db = db
-        self.confidence_threshold = confidence_threshold
         self.upload_dir = Path(upload_dir)
 
     async def process_prediction(self, file: UploadFile) -> PredictionResult:
-        start_time = time.perf_counter()
+        total_start = time.perf_counter()
+        prediction_id = str(uuid.uuid4())
+        created_at = datetime.now(UTC)
+
+        logger.info(
+            "prediction_request_received",
+            extra={"prediction_id": prediction_id, "upload_filename": file.filename},
+        )
 
         self._validate_upload(file)
         image_bytes = await self._read_upload(file)
 
         try:
-            image_path = self._save_upload(image_bytes, file.filename or "prediction.png")
-            processed_image = await self._maybe_await(self.preprocessor.preprocess(image_bytes))
-            detections = await self._detect_symbols(processed_image)
-            ast = await self._maybe_await(self.parser.parse(detections))
-            latex = await self._maybe_await(self.latex_generator.generate(ast))
+            image_path = self._save_upload(image_bytes, file.filename or "prediction.png", prediction_id)
 
-            if detections and not latex:
-                raise PredictionPipelineError("Detected symbols could not be converted to LaTeX.")
+            preprocessing_start = time.perf_counter()
+            processed_image = await self._maybe_await(
+                self.preprocessor.preprocess_for_pix2tex(image_bytes)
+            )
+            preprocessing_time_ms = self._elapsed_ms(preprocessing_start)
+
+            ocr_result = await self._maybe_await(self.ocr_service.predict(processed_image))
 
             result = PredictionResult(
-                latex=latex,
-                confidence=self._calculate_confidence(detections),
-                symbols_detected=len(detections),
-                processing_time_ms=self._elapsed_ms(start_time),
+                prediction_id=prediction_id,
+                image_path=image_path,
+                latex=ocr_result.latex,
+                confidence=ocr_result.confidence,
+                confidence_source=ocr_result.confidence_source,
+                processing_time_ms=self._elapsed_ms(total_start),
+                preprocessing_time_ms=preprocessing_time_ms,
+                ocr_time_ms=ocr_result.ocr_time_ms,
+                created_at=created_at,
             )
             self._record_history(image_path=image_path, result=result)
+            logger.info(
+                "prediction_request_completed",
+                extra={
+                    "prediction_id": prediction_id,
+                    "processing_time_ms": result.processing_time_ms,
+                    "preprocessing_time_ms": preprocessing_time_ms,
+                    "ocr_time_ms": ocr_result.ocr_time_ms,
+                },
+            )
             return result
         except HTTPException:
             raise
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid image or expression data: {exc}",
-            ) from exc
-        except PredictionPipelineError as exc:
+        except Pix2TexInputError as exc:
+            logger.warning("prediction_invalid_image", extra={"prediction_id": prediction_id, "error": str(exc)})
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
             ) from exc
+        except Pix2TexModelError as exc:
+            logger.exception("prediction_ocr_failed", extra={"prediction_id": prediction_id})
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+        except ValueError as exc:
+            logger.warning("prediction_validation_failed", extra={"prediction_id": prediction_id, "error": str(exc)})
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid image data: {exc}",
+            ) from exc
         except Exception as exc:
+            logger.exception("prediction_pipeline_failed", extra={"prediction_id": prediction_id})
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Prediction pipeline failed: {exc}",
+                detail="Prediction pipeline failed. Please try again later.",
             ) from exc
 
     def _validate_upload(self, file: UploadFile) -> None:
@@ -115,12 +130,21 @@ class PredictService:
 
         if extension not in self.allowed_extensions:
             allowed = ", ".join(sorted(self.allowed_extensions))
+            logger.warning("upload_extension_rejected", extra={"upload_filename": filename, "extension": extension})
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported file format '{extension or 'unknown'}'. Allowed: {allowed}.",
             )
 
+        if file.content_type and file.content_type not in self.allowed_content_types:
+            logger.warning("upload_mime_rejected", extra={"upload_filename": filename, "content_type": file.content_type})
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported image MIME type. Allowed: image/jpeg, image/png, image/webp.",
+            )
+
         if file.size is not None and file.size > self.max_file_size:
+            logger.warning("upload_size_rejected", extra={"upload_filename": filename, "size": file.size})
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="File size exceeds the 10 MB maximum limit.",
@@ -150,71 +174,6 @@ class PredictService:
 
         return image_bytes
 
-    async def _detect_symbols(self, processed_image: Any) -> List[Dict[str, Any]]:
-        detector_fn = getattr(self.detector, "detect", None)
-        if detector_fn is not None:
-            detections = await self._call_detector(detector_fn, processed_image)
-            return self._normalize_detections(detections)
-
-        legacy_detector_fn = getattr(self.detector, "detect_symbols", None)
-        if legacy_detector_fn is not None:
-            detections = await self._maybe_await(legacy_detector_fn(processed_image))
-            return self._normalize_detections(detections)
-
-        raise PredictionPipelineError("Detector must provide detect() or detect_symbols().")
-
-    async def _call_detector(self, detector_fn: Any, processed_image: Any) -> Any:
-        try:
-            return await self._maybe_await(
-                detector_fn(processed_image, confidence_threshold=self.confidence_threshold)
-            )
-        except TypeError as exc:
-            if "confidence_threshold" not in str(exc):
-                raise
-            return await self._maybe_await(detector_fn(processed_image))
-
-    def _normalize_detections(self, detections: Any) -> List[Dict[str, Any]]:
-        if detections is None:
-            return []
-
-        if self._is_legacy_detection_tuple(detections):
-            boxes, classes = detections
-            return [
-                {
-                    "symbol": str(symbol),
-                    "confidence": 1.0,
-                    "bbox": self._bbox_to_list(box),
-                }
-                for box, symbol in zip(boxes, classes)
-            ]
-
-        normalized = []
-        for detection in detections:
-            if not isinstance(detection, dict):
-                raise PredictionPipelineError("Detector returned an unsupported detection item.")
-
-            symbol = detection.get("symbol")
-            bbox = detection.get("bbox")
-            if symbol is None or bbox is None:
-                raise PredictionPipelineError("Each detection must include symbol and bbox.")
-
-            normalized.append(
-                {
-                    "symbol": str(symbol),
-                    "confidence": float(detection.get("confidence", 1.0)),
-                    "bbox": self._bbox_to_list(bbox),
-                }
-            )
-
-        return normalized
-
-    def _calculate_confidence(self, detections: Sequence[Dict[str, Any]]) -> float:
-        if not detections:
-            return 0.0
-
-        confidence_sum = sum(float(detection.get("confidence", 0.0)) for detection in detections)
-        return round(confidence_sum / len(detections), 4)
-
     def _elapsed_ms(self, start_time: float) -> int:
         return int(round((time.perf_counter() - start_time) * 1000))
 
@@ -224,10 +183,10 @@ class PredictService:
             return ""
         return filename[dot_index:].lower()
 
-    def _save_upload(self, image_bytes: bytes, filename: str) -> str:
+    def _save_upload(self, image_bytes: bytes, filename: str, prediction_id: str) -> str:
         extension = self._extension(filename) or ".png"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
-        stored_name = f"{uuid.uuid4()}{extension}"
+        stored_name = f"{prediction_id}{extension}"
         stored_path = self.upload_dir / stored_name
         stored_path.write_bytes(image_bytes)
         return f"/uploads/predictions/{stored_name}"
@@ -236,27 +195,19 @@ class PredictService:
         if self.db is None:
             return
 
-        crud_history.create(
-            self.db,
-            obj_in=EquationHistoryCreate(
-                image_path=image_path,
-                latex_output=result.latex,
-                confidence=result.confidence,
-            ),
-        )
-
-    def _bbox_to_list(self, bbox: Iterable[Any]) -> List[float]:
-        values = list(bbox)
-        if len(values) != 4:
-            raise PredictionPipelineError("Detection bbox must contain four coordinates.")
-        return [float(value) for value in values]
-
-    def _is_legacy_detection_tuple(self, detections: Any) -> bool:
-        return (
-            isinstance(detections, tuple)
-            and len(detections) == 2
-            and not inspect.isawaitable(detections[0])
-        )
+        try:
+            crud_history.create(
+                self.db,
+                obj_in=EquationHistoryCreate(
+                    image_path=image_path,
+                    latex_output=result.latex,
+                    confidence=result.confidence,
+                ),
+            )
+            logger.info("prediction_history_saved", extra={"prediction_id": result.prediction_id})
+        except Exception:
+            logger.exception("prediction_history_save_failed", extra={"prediction_id": result.prediction_id})
+            raise
 
     async def _maybe_await(self, value: Any) -> Any:
         if inspect.isawaitable(value):

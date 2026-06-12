@@ -26,15 +26,24 @@ services:
     container_name: hmer_backend
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/hmer
-      - YOLO_MODEL_PATH=/app/ml_models/yolo/best.pt
+      - HF_HOME=/app/.cache/huggingface
+      - XDG_CACHE_HOME=/app/.cache
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - ./ml_models:/app/ml_models
+      - backend_uploads:/app/uploads
+      - pix2tex_cache:/app/.cache
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   frontend:
     build:
@@ -48,3 +57,5 @@ services:
 
 volumes:
   pgdata:
+  backend_uploads:
+  pix2tex_cache:

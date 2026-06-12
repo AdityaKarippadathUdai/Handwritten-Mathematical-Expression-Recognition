@@ -5,7 +5,7 @@ const capabilities = [
   {
     icon: BrainCircuit,
     title: 'Vision-first recognition',
-    text: 'Transforms handwritten math images into structured LaTeX with model confidence and symbol metadata.',
+    text: 'Transforms handwritten math images into structured LaTeX with OCR timing and confidence metadata.',
   },
   {
     icon: FileCode2,
@@ -20,7 +20,7 @@ const capabilities = [
 ]
 
 const stats = [
-  ['YOLOv11', 'Recognition engine'],
+  ['Pix2Tex', 'Recognition engine'],
   ['LaTeX', 'Export format'],
   ['FastAPI', 'Backend service'],
   ['React', 'Interface layer'],

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     ] = Field(default=["http://localhost", "http://localhost:3000", "http://localhost:5173"])
 
     DATABASE_URL: str = "postgresql://postgres:postgres@db:5432/hmer"
+    PIX2TEX_CACHE_DIR: str = "/app/.cache/pix2tex"
     YOLO_MODEL_PATH: str = "ml_models/yolo/best.pt"
     
     ENVIRONMENT: str = "production"

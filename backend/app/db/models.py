@@ -6,7 +6,7 @@ from app.core.database import Base
 class EquationHistory(Base):
     """
     EquationHistory stores the history of expressions uploaded, their recognized
-    LaTeX format, and the prediction confidence score from the YOLOv11 model.
+    LaTeX format, and the OCR confidence value or placeholder confidence.
     """
     __tablename__ = "equation_history"
 

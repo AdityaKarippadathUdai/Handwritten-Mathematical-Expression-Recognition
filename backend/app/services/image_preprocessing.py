@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import Union, Tuple, Dict, Any
+from PIL import Image, ImageOps
 
 
 class ImagePreprocessingService:
@@ -346,3 +347,30 @@ class ImagePreprocessingService:
             model_ready = np.expand_dims(model_ready, axis=-1)
 
         return model_ready
+
+    def preprocess_for_pix2tex(self, image_source: Union[bytes, np.ndarray, str, Path], **kwargs) -> Image.Image:
+        """
+        Prepare uploads for Pix2Tex without destroying sequence-level visual cues.
+
+        Retained operations:
+        - Grayscale conversion: mathematical meaning is carried by stroke intensity,
+          and removing color makes camera/scanner inputs more consistent.
+        - Light median denoising: removes isolated sensor/paper specks while keeping
+          handwriting edges sharper than Gaussian blur.
+        - Autocontrast: stretches faint pencil/pen strokes without binarizing them.
+
+        Deliberately skipped for Pix2Tex:
+        - Adaptive thresholding can erase faint strokes, dots, matrix brackets, and
+          thin fraction bars that sequence OCR needs.
+        - Fixed 640x640 resizing/padding was YOLO-specific and can distort the
+          expression layout expected by Pix2Tex.
+        - Float normalization is not needed because Pix2Tex accepts PIL images.
+        """
+        noise_kernel = kwargs.get("noise_kernel", 3)
+        autocontrast_cutoff = kwargs.get("autocontrast_cutoff", 1)
+
+        img = self.load_image(image_source)
+        gray = self.convert_to_grayscale(img)
+        denoised = self.remove_noise(gray, method="median", kernel_size=noise_kernel)
+        pil_image = Image.fromarray(denoised)
+        return ImageOps.autocontrast(pil_image, cutoff=autocontrast_cutoff).convert("RGB")

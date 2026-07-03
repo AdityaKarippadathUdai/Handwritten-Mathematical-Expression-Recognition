@@ -25,7 +25,13 @@ services:
       dockerfile: Dockerfile
     container_name: hmer_backend
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/hmer
+      - APP_RUNTIME=docker
+      - ENVIRONMENT=docker
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=${POSTGRES_DB:-hmer}
+      - DATABASE_USER=${POSTGRES_USER:-postgres}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - HF_HOME=/app/.cache/huggingface
       - XDG_CACHE_HOME=/app/.cache
     ports:

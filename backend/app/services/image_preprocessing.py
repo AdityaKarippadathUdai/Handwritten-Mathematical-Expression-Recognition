@@ -1,8 +1,12 @@
+import logging
+
 import cv2
 import numpy as np
 from pathlib import Path
 from typing import Union, Tuple, Dict, Any
 from PIL import Image, ImageOps
+
+logger = logging.getLogger(__name__)
 
 
 class ImagePreprocessingService:
@@ -369,8 +373,27 @@ class ImagePreprocessingService:
         noise_kernel = kwargs.get("noise_kernel", 3)
         autocontrast_cutoff = kwargs.get("autocontrast_cutoff", 1)
 
+        logger.info("pix2tex_preprocessing_started")
         img = self.load_image(image_source)
+        logger.info(
+            "pix2tex_preprocessing_image_loaded",
+            extra={
+                "shape": img.shape,
+                "dtype": str(img.dtype),
+                "channels": img.shape[2] if len(img.shape) == 3 else 1,
+            },
+        )
         gray = self.convert_to_grayscale(img)
         denoised = self.remove_noise(gray, method="median", kernel_size=noise_kernel)
         pil_image = Image.fromarray(denoised)
-        return ImageOps.autocontrast(pil_image, cutoff=autocontrast_cutoff).convert("RGB")
+        result = ImageOps.autocontrast(pil_image, cutoff=autocontrast_cutoff).convert("RGB")
+        logger.info(
+            "pix2tex_preprocessing_finished",
+            extra={
+                "pil_type": type(result).__name__,
+                "mode": result.mode,
+                "size": result.size,
+                "format": result.format,
+            },
+        )
+        return result

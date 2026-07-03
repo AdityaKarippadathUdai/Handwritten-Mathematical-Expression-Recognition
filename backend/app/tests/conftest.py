@@ -6,6 +6,7 @@ This runs with whatever Python interpreter pytest uses.
 """
 import sys
 import os
+import tempfile
 import types
 from unittest.mock import MagicMock
 import pytest
@@ -51,9 +52,27 @@ except ImportError:
 
 _pix2tex = _stub("pix2tex")
 _pix2tex_cli = _stub("pix2tex.cli")
+_PIX2TEX_STUB_DIR = os.path.join(tempfile.gettempdir(), "hmer_test_pix2tex_stub")
+for _relative_path in (
+    "model/checkpoints/weights.pth",
+    "model/checkpoints/image_resizer.pth",
+    "model/dataset/tokenizer.json",
+    "model/settings/config.yaml",
+):
+    _path = os.path.join(_PIX2TEX_STUB_DIR, *_relative_path.split("/"))
+    os.makedirs(os.path.dirname(_path), exist_ok=True)
+    if not os.path.exists(_path):
+        with open(_path, "wb") as _file:
+            _file.write(b"test")
+_pix2tex.__file__ = os.path.join(_PIX2TEX_STUB_DIR, "__init__.py")
 
 
 class _LatexOCR:
+    def __init__(self):
+        self.args = types.SimpleNamespace(device="cpu", checkpoint="checkpoints/weights.pth")
+        self.model = types.SimpleNamespace(encoder=object(), decoder=object())
+        self.tokenizer = object()
+
     def __call__(self, image):
         return r"x^2 + y"
 

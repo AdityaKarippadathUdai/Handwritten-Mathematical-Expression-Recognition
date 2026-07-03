@@ -2,11 +2,14 @@ import inspect
 import logging
 import time
 import uuid
+from io import BytesIO
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, UnidentifiedImageError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.crud.crud_history import crud_history
@@ -57,23 +60,73 @@ class PredictService:
         created_at = datetime.now(UTC)
 
         logger.info(
-            "prediction_request_received",
+            "prediction_started",
             extra={"prediction_id": prediction_id, "upload_filename": file.filename},
         )
 
-        self._validate_upload(file)
-        image_bytes = await self._read_upload(file)
-
         try:
-            image_path = self._save_upload(image_bytes, file.filename or "prediction.png", prediction_id)
+            logger.info("prediction_upload_validation_started", extra={"prediction_id": prediction_id})
+            self._validate_upload(file)
+            logger.info("prediction_upload_validated", extra={"prediction_id": prediction_id})
 
+            logger.info("prediction_upload_read_started", extra={"prediction_id": prediction_id})
+            image_bytes = await self._read_upload(file)
+            logger.info(
+                "prediction_upload_read_finished",
+                extra={
+                    "prediction_id": prediction_id,
+                    "file_size": len(image_bytes),
+                    "mime_type": file.content_type,
+                    "extension": self._extension(file.filename or ""),
+                },
+            )
+
+            self._inspect_upload_image(image_bytes, file, prediction_id)
+
+            logger.info("prediction_upload_save_started", extra={"prediction_id": prediction_id})
+            image_path = self._save_upload(image_bytes, file.filename or "prediction.png", prediction_id)
+            logger.info(
+                "prediction_upload_saved",
+                extra={"prediction_id": prediction_id, "image_path": image_path},
+            )
+
+            logger.info("prediction_preprocessing_started", extra={"prediction_id": prediction_id})
             preprocessing_start = time.perf_counter()
             processed_image = await self._maybe_await(
                 self.preprocessor.preprocess_for_pix2tex(image_bytes)
             )
             preprocessing_time_ms = self._elapsed_ms(preprocessing_start)
+            if isinstance(processed_image, Image.Image):
+                logger.info(
+                    "prediction_preprocessing_finished",
+                    extra={
+                        "prediction_id": prediction_id,
+                        "image_type": type(processed_image).__name__,
+                        "mode": processed_image.mode,
+                        "size": processed_image.size,
+                        "format": processed_image.format,
+                        "preprocessing_time_ms": preprocessing_time_ms,
+                    },
+                )
+            else:
+                logger.error(
+                    "prediction_preprocessing_invalid_output",
+                    extra={
+                        "prediction_id": prediction_id,
+                        "output_type": type(processed_image).__name__,
+                    },
+                )
 
+            logger.info("prediction_pix2tex_inference_started", extra={"prediction_id": prediction_id})
             ocr_result = await self._maybe_await(self.ocr_service.predict(processed_image))
+            logger.info(
+                "prediction_pix2tex_inference_finished",
+                extra={
+                    "prediction_id": prediction_id,
+                    "latex": ocr_result.latex,
+                    "ocr_time_ms": ocr_result.ocr_time_ms,
+                },
+            )
 
             result = PredictionResult(
                 prediction_id=prediction_id,
@@ -86,9 +139,11 @@ class PredictService:
                 ocr_time_ms=ocr_result.ocr_time_ms,
                 created_at=created_at,
             )
+            logger.info("prediction_history_save_started", extra={"prediction_id": prediction_id})
             self._record_history(image_path=image_path, result=result)
+            logger.info("prediction_response_generated", extra={"prediction_id": prediction_id})
             logger.info(
-                "prediction_request_completed",
+                "prediction_completed",
                 extra={
                     "prediction_id": prediction_id,
                     "processing_time_ms": result.processing_time_ms,
@@ -97,10 +152,14 @@ class PredictService:
                 },
             )
             return result
-        except HTTPException:
+        except HTTPException as exc:
+            logger.exception(
+                "prediction_http_exception",
+                extra={"prediction_id": prediction_id, "status_code": exc.status_code},
+            )
             raise
         except Pix2TexInputError as exc:
-            logger.warning("prediction_invalid_image", extra={"prediction_id": prediction_id, "error": str(exc)})
+            logger.exception("prediction_invalid_image", extra={"prediction_id": prediction_id})
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
@@ -111,8 +170,14 @@ class PredictService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=str(exc),
             ) from exc
+        except SQLAlchemyError as exc:
+            logger.exception("prediction_database_unavailable", extra={"prediction_id": prediction_id})
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"success": False, "message": "Database unavailable"},
+            ) from exc
         except ValueError as exc:
-            logger.warning("prediction_validation_failed", extra={"prediction_id": prediction_id, "error": str(exc)})
+            logger.exception("prediction_validation_failed", extra={"prediction_id": prediction_id})
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid image data: {exc}",
@@ -155,6 +220,7 @@ class PredictService:
             await file.seek(0)
             image_bytes = await file.read()
         except Exception as exc:
+            logger.exception("prediction_upload_read_failed")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unable to read uploaded image: {exc}",
@@ -173,6 +239,29 @@ class PredictService:
             )
 
         return image_bytes
+
+    def _inspect_upload_image(self, image_bytes: bytes, file: UploadFile, prediction_id: str) -> None:
+        try:
+            with Image.open(BytesIO(image_bytes)) as image:
+                image.load()
+                logger.info(
+                    "prediction_upload_image_decoded",
+                    extra={
+                        "prediction_id": prediction_id,
+                        "file_size": len(image_bytes),
+                        "mime_type": file.content_type,
+                        "extension": self._extension(file.filename or ""),
+                        "decoded_dimensions": image.size,
+                        "pil_mode": image.mode,
+                        "pil_format": image.format,
+                    },
+                )
+        except (UnidentifiedImageError, OSError) as exc:
+            logger.exception("prediction_upload_image_decode_failed", extra={"prediction_id": prediction_id})
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Uploaded file is not a valid image.",
+            ) from exc
 
     def _elapsed_ms(self, start_time: float) -> int:
         return int(round((time.perf_counter() - start_time) * 1000))
@@ -193,6 +282,7 @@ class PredictService:
 
     def _record_history(self, *, image_path: str, result: PredictionResult) -> None:
         if self.db is None:
+            logger.info("prediction_history_save_skipped", extra={"prediction_id": result.prediction_id})
             return
 
         try:

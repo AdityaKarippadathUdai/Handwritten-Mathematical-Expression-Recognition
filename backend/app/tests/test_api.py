@@ -6,9 +6,10 @@ def test_read_root(client):
 
 def test_predict_uses_pix2tex_workflow(client):
     from io import BytesIO
-    from PIL import Image
+    from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (120, 48), "white")
+    ImageDraw.Draw(image).line((15, 24, 90, 24), fill="black", width=3)
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     buffer.seek(0)

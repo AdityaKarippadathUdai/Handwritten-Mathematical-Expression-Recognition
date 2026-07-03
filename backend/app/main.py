@@ -2,14 +2,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 from pathlib import Path
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
-from sqlalchemy.sql import text
-from app.api import deps
 from app.api.v1.endpoints import auth, expression, history, model, predict
 from app.core.config import settings
+from app.core.database import database_status
 from app.services.pix2tex_service import get_pix2tex_service
 
 logging.basicConfig(
@@ -22,6 +20,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("application_startup_begin")
+    logger.info("database_url_resolved", extra={"database_url": settings.safe_database_url})
+    db_status = database_status()
+    if db_status["status"] == "connected":
+        logger.info("database_startup_connected", extra={"database_url": db_status["url"]})
+    else:
+        logger.warning("database_startup_unavailable", extra={"database_url": db_status["url"]})
     get_pix2tex_service().initialize()
     logger.info("application_startup_complete")
     yield
@@ -52,21 +56,16 @@ def read_root() -> Dict[str, str]:
     return {"status": "ok", "app": settings.PROJECT_NAME}
 
 @app.get("/health", tags=["health"])
-def health_check(db: Session = Depends(deps.get_db)) -> Dict[str, Any]:
+def health_check() -> Dict[str, Any]:
     health_status: Dict[str, Any] = {
         "status": "healthy",
-        "database": "untested",
+        "database": database_status(),
         "model": get_pix2tex_service().health_status(),
         "environment": settings.ENVIRONMENT,
     }
-    try:
-        # Verify db connectivity by executing a basic select statement
-        db.execute(text("SELECT 1"))
-        health_status["database"] = "connected"
-    except Exception as e:
-        health_status["status"] = "unhealthy"
-        health_status["database"] = f"error: {str(e)}"
 
+    if health_status["database"]["status"] != "connected":
+        health_status["status"] = "unhealthy"
     if not health_status["model"]["loaded"]:
         health_status["status"] = "unhealthy"
     

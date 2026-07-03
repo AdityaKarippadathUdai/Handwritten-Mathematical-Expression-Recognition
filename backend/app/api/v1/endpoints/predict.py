@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+import logging
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.prediction import PredictionResult
 from app.services.predict_service import PredictService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 def get_predict_service(db: Session = Depends(deps.get_db)) -> PredictService:
     return PredictService(db=db)
@@ -19,4 +23,10 @@ async def predict_expression(
     preprocesses it for Pix2Tex, runs LaTeX-OCR inference, saves history, and
     returns render-ready LaTeX with timing metadata.
     """
-    return await service.process_prediction(image)
+    try:
+        return await service.process_prediction(image)
+    except HTTPException as exc:
+        logger.exception("predict_endpoint_http_exception", extra={"status_code": exc.status_code})
+        if exc.status_code == status.HTTP_503_SERVICE_UNAVAILABLE and isinstance(exc.detail, dict):
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        raise

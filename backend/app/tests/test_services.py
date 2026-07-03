@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 def test_pix2tex_service_health_and_prediction():
@@ -7,7 +7,10 @@ def test_pix2tex_service_health_and_prediction():
     service = Pix2TexOCRService()
     service.initialize()
 
-    result = service.predict(Image.new("RGB", (80, 32), "white"))
+    image = Image.new("RGB", (80, 32), "white")
+    ImageDraw.Draw(image).line((10, 16, 60, 16), fill="black", width=3)
+
+    result = service.predict(image)
 
     assert service.health_status()["engine"] == "pix2tex"
     assert service.is_loaded is True

@@ -25,3 +25,6 @@ build/
 *.onnx
 *.engine
 !ml_models/yolo/best.pt
+
+backend/uploads/
+backend/.test_pix2tex_stub/model

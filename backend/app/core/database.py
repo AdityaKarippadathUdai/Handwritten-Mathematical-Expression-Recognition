@@ -30,6 +30,7 @@ def check_database_connection() -> None:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
+        logger.exception("database_connection_check_failed", extra={"database_url": settings.safe_database_url})
         raise DatabaseUnavailableError(str(exc)) from exc
 
 
